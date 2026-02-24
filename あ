@@ -1,0 +1,3 @@
+cd chemical-ma-news
+npm run dev     # 開発サーバー起動
+npm run build   # プロダクションビルド
