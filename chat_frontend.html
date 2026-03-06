@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>チャット同期</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a2e;
+    --primary: #4a9eff;
+    --text: #e8e8e8;
+    --text-muted: #888;
+    --border: #2a2a3e;
+    --msg-mine: #1e3a5f;
+    --msg-other: #2a2a3e;
+    --system: #333;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+
+  /* ログイン画面 */
+  #login-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 24px;
+    gap: 16px;
+  }
+  #login-screen h1 { font-size: 24px; color: var(--primary); }
+  #login-screen input {
+    width: 100%;
+    max-width: 300px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 16px;
+    outline: none;
+  }
+  #login-screen input:focus { border-color: var(--primary); }
+  #login-screen button {
+    padding: 12px 32px;
+    border-radius: 12px;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* チャット画面 */
+  #chat-screen { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+
+  /* ヘッダー */
+  #header {
+    padding: 12px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #header .title { font-weight: 600; font-size: 16px; }
+  #header .status {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: #1a3a1a;
+    color: #4caf50;
+  }
+  #header .status.disconnected {
+    background: #3a1a1a;
+    color: #f44336;
+  }
+
+  /* メッセージエリア */
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .msg {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .msg.mine {
+    align-self: flex-end;
+    background: var(--msg-mine);
+    border-bottom-right-radius: 4px;
+  }
+  .msg.other {
+    align-self: flex-start;
+    background: var(--msg-other);
+    border-bottom-left-radius: 4px;
+  }
+  .msg .sender {
+    font-size: 12px;
+    color: var(--primary);
+    margin-bottom: 2px;
+    font-weight: 600;
+  }
+  .msg .device-tag {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-left: 6px;
+    font-weight: normal;
+  }
+  .msg .meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-align: right;
+  }
+  .system-msg {
+    align-self: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--system);
+    padding: 4px 12px;
+    border-radius: 12px;
+  }
+
+  /* 入力エリア */
+  #input-area {
+    padding: 8px 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  #input-area textarea {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    font-family: inherit;
+    resize: none;
+    max-height: 120px;
+    outline: none;
+    line-height: 1.4;
+  }
+  #input-area textarea:focus { border-color: var(--primary); }
+  #send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #send-btn:disabled { opacity: 0.4; }
+
+  /* safe area (ノッチ対応) */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    #input-area { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ログイン -->
+<div id="login-screen">
+  <h1>Chat Sync</h1>
+  <p style="color: var(--text-muted); text-align: center;">Macとスマホでリアルタイム同期</p>
+  <input id="username-input" type="text" placeholder="名前を入力" autocomplete="off">
+  <button onclick="joinChat()">参加する</button>
+</div>
+
+<!-- チャット -->
+<div id="chat-screen">
+  <div id="header">
+    <span class="title" id="room-title">Chat Sync</span>
+    <span class="status" id="conn-status">接続中</span>
+  </div>
+  <div id="messages"></div>
+  <div id="input-area">
+    <textarea id="msg-input" rows="1" placeholder="メッセージを入力..." autocomplete="off"></textarea>
+    <button id="send-btn" onclick="sendMessage()" disabled>&#9654;</button>
+  </div>
+</div>
+
+<script>
+let ws = null;
+let username = "";
+let reconnectTimer = null;
+
+function detectDevice() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+  return "desktop";
+}
+const device = detectDevice();
+
+function joinChat() {
+  username = document.getElementById("username-input").value.trim();
+  if (!username) return;
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("chat-screen").style.display = "flex";
+  connectWebSocket();
+}
+
+document.getElementById("username-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") joinChat();
+});
+
+function connectWebSocket() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${location.host}/ws/${encodeURIComponent(username)}`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    setStatus(true);
+    document.getElementById("send-btn").disabled = false;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  };
+
+  ws.onclose = () => {
+    setStatus(false);
+    document.getElementById("send-btn").disabled = true;
+    // 自動再接続（2秒後）
+    reconnectTimer = setTimeout(connectWebSocket, 2000);
+  };
+
+  ws.onerror = () => { ws.close(); };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "history") {
+      data.messages.forEach((m) => appendMessage(m));
+    } else if (data.type === "message") {
+      appendMessage(data);
+    } else if (data.type === "system") {
+      appendSystem(data.content);
+    }
+    scrollToBottom();
+  };
+}
+
+function sendMessage() {
+  const input = document.getElementById("msg-input");
+  const content = input.value.trim();
+  if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ content, device }));
+  input.value = "";
+  autoResize(input);
+}
+
+function appendMessage(m) {
+  const container = document.getElementById("messages");
+  const div = document.createElement("div");
+  const isMine = m.sender === username;
+  div.className = `msg ${isMine ? "mine" : "other"}`;
+
+  const deviceLabel = m.device === "mobile" ? "📱" : "💻";
+  const time = new Date(m.timestamp).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+
+  div.innerHTML = `
+    ${!isMine ? `<div class="sender">${escapeHtml(m.sender)}<span class="device-tag">${deviceLabel}</span></div>` : ""}
+    <div class="text">${escapeHtml(m.content)}</div>
+    <div class="meta">${time} ${isMine ? deviceLabel : ""}</div>
+  `;
+  container.appendChild(div);
+}
+
+function appendSystem(text) {
+  const container = document.getElementById("messages");
+  const div = document.createElement("div");
+  div.className = "system-msg";
+  div.textContent = text;
+  container.appendChild(div);
+}
+
+function scrollToBottom() {
+  const el = document.getElementById("messages");
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(connected) {
+  const el = document.getElementById("conn-status");
+  el.textContent = connected ? "接続中" : "再接続中...";
+  el.className = connected ? "status" : "status disconnected";
+}
+
+function escapeHtml(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// テキストエリア自動リサイズ
+const msgInput = document.getElementById("msg-input");
+msgInput.addEventListener("input", () => autoResize(msgInput));
+msgInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+</script>
+</body>
+</html>
